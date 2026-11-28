@@ -1,4 +1,5 @@
 import type { TransferExecution } from "./transferExecution";
+import type { ViewerContext } from "./visibilityService.js";
 import ProvenanceRecord, {
   ImportSourceType,
   TransformType,
@@ -21,6 +22,11 @@ import { recordAuditEvent } from "./auditTrail";
  * - Query provenance lineage
  * - Export provenance data for audit/compliance
  */
+
+/** Stable principal for provenance/audit records (wallet preferred). */
+function actorPrincipal(actor: IActorMetadata): string {
+  return actor.actorWallet || actor.actorId || "system";
+}
 
 export interface CreateProvenanceParams {
   recovery?: { execution: TransferExecution; index: number; provenanceId: string };
@@ -298,7 +304,9 @@ class ProvenanceService {
         isDeleted: false,
       }).populate("promptId");
 
-      return provenanceRecords.map((record) => record.promptId).filter(Boolean);
+      return provenanceRecords
+        .map((record: { promptId: unknown }) => record.promptId)
+        .filter(Boolean);
     } catch (error) {
       logger.error("Failed to get batch prompts", { error, batchId });
       throw error;
@@ -527,54 +535,51 @@ export async function trackDerivedPrompt(params: {
       $or: [{ promptId: parentPromptId }, { onChainId: parentOnChainId }],
     });
 
-    // 2. Determine transform type based on relation kind
-    let transformType: TransformType;
-    switch (relationKind) {
-      case "fork":
-        transformType = transformationType || "FORK";
-        break;
-      case "remix":
-        transformType = transformationType || "REMIX";
-        break;
-      case "parent":
-        transformType = "VERSION_UPDATE";
-        break;
-      case "source":
-        transformType = "CONTENT_ENHANCEMENT";
-        break;
-    }
+    // 2. Determine transform type based on relation kind. Legacy uppercase
+    // labels are preserved in transformConfig for audit readability while the
+    // persisted enum stays within the ProvenanceRecord schema.
+    const relationTransformTypes: Record<typeof relationKind, TransformType> = {
+      fork: "customization",
+      remix: "merge",
+      parent: "format_conversion",
+      source: "extraction",
+    };
+    const transformType: TransformType = transformationType ?? relationTransformTypes[relationKind];
+    const derivedLabel = transformationType ?? relationKind.toUpperCase();
+    const details = transformDetails ||
+      `Derived from prompt ${parentOnChainId || parentPromptId} via ${relationKind}`;
 
     // 3. Create provenance record for the derived prompt
-    const transformations: Partial<ITransformMetadata>[] = [
+    const transformations: ITransformMetadata[] = [
       {
         transformType,
-        timestamp: new Date(),
-        actor,
-        details: transformDetails || `Derived from prompt ${parentOnChainId || parentPromptId} via ${relationKind}`,
+        transformVersion: "1.0",
+        transformTimestamp: new Date(),
+        transformConfig: {
+          relationKind,
+          derivedLabel,
+          details,
+          actor: actorPrincipal(actor),
+        },
       },
     ];
 
     // If parent has provenance, inherit some metadata
-    const sourceSystem: ISourceSystem = parentProvenance
-      ? {
-          name: parentProvenance.sourceSystem.name,
-          version: parentProvenance.sourceSystem.version,
-          identifier: `derived_from_${parentOnChainId || parentPromptId}`,
-        }
-      : {
-          name: "PromptHash Platform",
-          version: "1.0",
-          identifier: `derived_from_${parentOnChainId || parentPromptId}`,
-        };
+    const sourceSystem: ISourceSystem = {
+      systemName: parentProvenance?.sourceSystem.systemName ?? "PromptHash Platform",
+      systemVersion: parentProvenance?.sourceSystem.systemVersion ?? "1.0",
+      externalId: `derived_from_${parentOnChainId || parentPromptId}`,
+    };
 
-    const provenanceRecord = await createProvenanceRecord({
+    const provenanceRecord = await provenanceService.createProvenanceRecord({
       promptId,
       onChainId,
-      sourceType: "BLOCKCHAIN", // Derived prompts typically come from on-chain parents
+      sourceType: relationKind === "fork" ? "fork" : "system",
       sourceSystem,
       transformations,
       actor,
-      parentRecordId: parentProvenance ? String(parentProvenance._id) : undefined,
+      parentProvenanceId: parentProvenance ? String(parentProvenance._id) : undefined,
+      metadata: { relationKind, transformType: derivedLabel },
     });
 
     // 4. Update the prompt with provenance reference
@@ -582,7 +587,7 @@ export async function trackDerivedPrompt(params: {
       $set: {
         provenanceRecordId: provenanceRecord._id,
         provenanceSource: "BLOCKCHAIN",
-        provenanceActorId: actor.userId || actor.walletAddress,
+        provenanceActorId: actorPrincipal(actor),
         hasProvenance: true,
       },
     });
@@ -597,7 +602,7 @@ export async function trackDerivedPrompt(params: {
         $set: {
           kind: relationKind,
           origin: "creator",
-          declaredBy: actor.walletAddress?.toLowerCase(),
+          declaredBy: actor.actorWallet?.toLowerCase(),
         },
       },
       { upsert: true, new: true },
@@ -605,9 +610,11 @@ export async function trackDerivedPrompt(params: {
 
     // 6. Record audit event
     await recordAuditEvent({
-      actor: actor.walletAddress || actor.userId || "system",
+      actor: actorPrincipal(actor),
       action: "prompt.derived",
-      resource: `prompt:${promptId}`,
+      result: "success",
+      target: `prompt:${promptId}`,
+      targetType: "prompt",
       metadata: {
         parentPromptId,
         relationKind,
@@ -685,7 +692,7 @@ export async function trackDerivedPrompts(
  */
 export async function getDerivativesWithProvenance(
   promptId: string,
-  viewerContext?: { viewerWallet?: string; role?: string }
+  viewerContext?: ViewerContext
 ): Promise<any[]> {
   const [provenanceDerivatives, relationDerivatives] = await Promise.all([
     ProvenanceRecord.find({ parentRecordId: promptId }).lean(),
@@ -816,32 +823,33 @@ export async function trackPromptUpdate(params: {
         promptId,
       });
 
-      provenance = await createProvenanceRecord({
+      provenance = await provenanceService.createProvenanceRecord({
         promptId,
         onChainId,
-        sourceType: "MANUAL_ENTRY",
+        sourceType: "manual",
         sourceSystem: {
-          name: "PromptHash Platform",
-          version: "1.0",
-          identifier: `prompt_${onChainId || promptId}`,
+          systemName: "PromptHash Platform",
+          systemVersion: "1.0",
+          externalId: `prompt_${onChainId || promptId}`,
         },
         actor,
       });
     }
 
     // 2. Add transformation to the provenance record
-    const transformation: Partial<ITransformMetadata> = {
+    const transformation: ITransformMetadata = {
       transformType: updateType,
-      timestamp: new Date(),
-      actor,
-      details: updateDetails,
-      metadata: {
+      transformVersion: "1.0",
+      transformTimestamp: new Date(),
+      transformConfig: {
+        details: updateDetails,
+        actor: actorPrincipal(actor),
         changedFields: changedFields || [],
         previousVersion: previousVersion ? JSON.stringify(previousVersion) : undefined,
       },
     };
 
-    provenance.transformations.push(transformation as any);
+    provenance.transformations.push(transformation);
     await provenance.save();
 
     // 3. Update the prompt's updatedAt timestamp (handled by Mongoose)
@@ -851,9 +859,11 @@ export async function trackPromptUpdate(params: {
 
     // 4. Record audit event
     await recordAuditEvent({
-      actor: actor.walletAddress || actor.userId || "system",
+      actor: actorPrincipal(actor),
       action: "prompt.updated",
-      resource: `prompt:${promptId}`,
+      result: "success",
+      target: `prompt:${promptId}`,
+      targetType: "prompt",
       metadata: {
         updateType,
         changedFields,
@@ -907,24 +917,28 @@ export async function archiveProvenance(params: {
       return;
     }
 
-    // Add archival transformation
+    // Add archival transformation (legacy label kept in transformConfig)
     provenance.transformations.push({
-      transformType: "VALIDATION", // Using VALIDATION to represent archival
-      timestamp: new Date(),
-      actor,
-      details: `Prompt archived: ${reason || "No reason provided"}`,
-      metadata: {
+      transformType: "customization",
+      transformVersion: "1.0",
+      transformTimestamp: new Date(),
+      transformConfig: {
+        legacyTransformType: "VALIDATION",
+        actor: actorPrincipal(actor),
+        details: `Prompt archived: ${reason || "No reason provided"}`,
         archived: true,
         archivedAt: new Date().toISOString(),
       },
-    } as any);
+    });
 
     await provenance.save();
 
     await recordAuditEvent({
-      actor: actor.walletAddress || actor.userId || "system",
+      actor: actorPrincipal(actor),
       action: "prompt.archived",
-      resource: `prompt:${promptId}`,
+      result: "success",
+      target: `prompt:${promptId}`,
+      targetType: "prompt",
       metadata: {
         reason,
         provenanceRecordId: String(provenance._id),
@@ -968,24 +982,28 @@ export async function restoreProvenance(params: {
       return;
     }
 
-    // Add restoration transformation
+    // Add restoration transformation (legacy label kept in transformConfig)
     provenance.transformations.push({
-      transformType: "VALIDATION",
-      timestamp: new Date(),
-      actor,
-      details: "Prompt restored from archive",
-      metadata: {
+      transformType: "none",
+      transformVersion: "1.0",
+      transformTimestamp: new Date(),
+      transformConfig: {
+        legacyTransformType: "VALIDATION",
+        actor: actorPrincipal(actor),
+        details: "Prompt restored from archive",
         restored: true,
         restoredAt: new Date().toISOString(),
       },
-    } as any);
+    });
 
     await provenance.save();
 
     await recordAuditEvent({
-      actor: actor.walletAddress || actor.userId || "system",
+      actor: actorPrincipal(actor),
       action: "prompt.restored",
-      resource: `prompt:${promptId}`,
+      result: "success",
+      target: `prompt:${promptId}`,
+      targetType: "prompt",
       metadata: {
         provenanceRecordId: String(provenance._id),
       },
@@ -1031,23 +1049,29 @@ export async function getUpdateHistory(promptId: string): Promise<{
     };
   }
 
-  // Filter for update-related transformations
-  const updateTransforms = [
-    "VERSION_UPDATE",
-    "CONTENT_ENHANCEMENT",
-    "NORMALIZATION",
-    "ENRICHMENT",
-    "VALIDATION",
+  // Filter for update-related transformations. Legacy uppercase labels are
+  // surfaced from transformConfig when present.
+  const updateTransforms: TransformType[] = [
+    "customization",
+    "merge",
+    "format_conversion",
+    "extraction",
+    "none",
   ];
 
-  const updates = provenance.transformations
-    .filter((t) => updateTransforms.includes(t.transformType))
+  const updates = (provenance.transformations as ITransformMetadata[])
+    .filter(
+      (t) =>
+        updateTransforms.includes(t.transformType) ||
+        typeof t.transformConfig?.legacyTransformType === "string",
+    )
     .map((t) => ({
-      transformType: t.transformType,
-      timestamp: t.timestamp,
-      actor: t.actor,
-      details: t.details,
-      metadata: t.metadata,
+      transformType: String(t.transformConfig?.legacyTransformType ?? t.transformType),
+      timestamp: t.transformTimestamp,
+      actor: t.transformConfig?.actor ?? null,
+      details:
+        typeof t.transformConfig?.details === "string" ? t.transformConfig.details : "",
+      metadata: t.transformConfig,
     }));
 
   return {

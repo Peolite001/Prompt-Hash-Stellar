@@ -398,5 +398,5 @@ export async function executeRecordMerge(
 export function committedRedirectLookup(sourceId: string): Promise<string | null> {
   return RecordMerge.findOne({ sourceId, status: "committed" })
     .lean()
-    .then((doc) => (doc as { targetId?: string } | null)?.targetId ?? null);
+    .then((doc: unknown) => (doc as { targetId?: string } | null)?.targetId ?? null);
 }

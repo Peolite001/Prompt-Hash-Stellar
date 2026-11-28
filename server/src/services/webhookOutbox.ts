@@ -52,7 +52,7 @@ export async function enqueue(
   });
 
   await Promise.all(
-    subscriptions.map(async (sub) => {
+    subscriptions.map(async (sub: { _id: unknown; nextDeliverySequence?: number }) => {
       try {
         const existing = await WebhookOutboxEvent.findOne({
           subscriptionId: sub._id,

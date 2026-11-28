@@ -85,7 +85,7 @@ reviewRouter.get("/list", async (req: Request, res: Response) => {
     };
 
     return res.json({
-      reviews: reviews.map((r) => ({
+      reviews: reviews.map((r: any) => ({
         id: r._id,
         promptId: r.promptId,
         userAddress: r.userAddress,

@@ -1,4 +1,5 @@
-import { Router, type Request, type Response, type NextFunction } from "express";
+import { Router, type Response, type NextFunction } from "express";
+import { requireAdminScope, type AdminRequest } from "../middleware/adminAuth";
 import {
   maintenanceBannerService,
   MaintenanceBannerError,
@@ -10,7 +11,6 @@ import {
   MAINTENANCE_SEVERITIES,
   type MaintenanceScope,
 } from "../models/MaintenanceBanner.js";
-import { requireAdmin } from "../middleware/requireAdmin.js";
 
 export const maintenanceBannerRouter = Router();
 
@@ -28,7 +28,7 @@ function handleError(err: unknown, res: Response, next: NextFunction): void {
  */
 maintenanceBannerRouter.get(
   "/active",
-  async (req: Request, res: Response, next: NextFunction) => {
+  async (req: AdminRequest, res: Response, next: NextFunction) => {
     try {
       const scopeParam = (req.query.scope as string | undefined) ?? "global";
       if (!MAINTENANCE_SCOPES.includes(scopeParam as MaintenanceScope)) {
@@ -61,8 +61,8 @@ maintenanceBannerRouter.get("/metadata", (_req, res) => {
  */
 maintenanceBannerRouter.get(
   "/",
-  requireAdmin,
-  async (_req: Request, res: Response, next: NextFunction) => {
+  requireAdminScope("flags:write"),
+  async (_req: AdminRequest, res: Response, next: NextFunction) => {
     try {
       const banners = await maintenanceBannerService.listAll();
       res.json({ banners: banners });
@@ -77,10 +77,10 @@ maintenanceBannerRouter.get(
  */
 maintenanceBannerRouter.get(
   "/:id",
-  requireAdmin,
-  async (req: Request, res: Response, next: NextFunction) => {
+  requireAdminScope("flags:write"),
+  async (req: AdminRequest, res: Response, next: NextFunction) => {
     try {
-      const banner = await maintenanceBannerService.getById(req.params.id);
+      const banner = await maintenanceBannerService.getById(String(req.params.id));
       if (!banner) {
         res.status(404).json({ error: "not_found", message: "Maintenance banner not found." });
         return;
@@ -97,10 +97,10 @@ maintenanceBannerRouter.get(
  */
 maintenanceBannerRouter.post(
   "/",
-  requireAdmin,
-  async (req: Request, res: Response, next: NextFunction) => {
+  requireAdminScope("flags:write"),
+  async (req: AdminRequest, res: Response, next: NextFunction) => {
     try {
-      const actor = req.adminWallet ?? (req.body?.createdBy as string);
+      const actor = req.admin?.sub ?? (req.body?.createdBy as string);
       if (!actor) {
         res.status(401).json({ error: "unauthorized", message: "Admin identity required." });
         return;
@@ -119,16 +119,16 @@ maintenanceBannerRouter.post(
  */
 maintenanceBannerRouter.patch(
   "/:id",
-  requireAdmin,
-  async (req: Request, res: Response, next: NextFunction) => {
+  requireAdminScope("flags:write"),
+  async (req: AdminRequest, res: Response, next: NextFunction) => {
     try {
-      const actor = req.adminWallet ?? (req.body?.updatedBy as string);
+      const actor = req.admin?.sub ?? (req.body?.updatedBy as string);
       if (!actor) {
         res.status(401).json({ error: "unauthorized", message: "Admin identity required." });
         return;
       }
       const input = req.body as UpdateMaintenanceBannerInput;
-      const banner = await maintenanceBannerService.update(req.params.id, input, actor);
+      const banner = await maintenanceBannerService.update(String(req.params.id), input, actor);
       res.json({ banner });
     } catch (err) {
       handleError(err, res, next);
@@ -141,16 +141,16 @@ maintenanceBannerRouter.patch(
  */
 maintenanceBannerRouter.post(
   "/:id/enabled",
-  requireAdmin,
-  async (req: Request, res: Response, next: NextFunction) => {
+  requireAdminScope("flags:write"),
+  async (req: AdminRequest, res: Response, next: NextFunction) => {
     try {
-      const actor = req.adminWallet ?? (req.body?.updatedBy as string);
+      const actor = req.admin?.sub ?? (req.body?.updatedBy as string);
       if (!actor) {
         res.status(401).json({ error: "unauthorized", message: "Admin identity required." });
         return;
       }
       const enabled = Boolean(req.body?.enabled);
-      const banner = await maintenanceBannerService.setEnabled(req.params.id, enabled, actor);
+      const banner = await maintenanceBannerService.setEnabled(String(req.params.id), enabled, actor);
       res.json({ banner });
     } catch (err) {
       handleError(err, res, next);
@@ -163,15 +163,15 @@ maintenanceBannerRouter.post(
  */
 maintenanceBannerRouter.delete(
   "/:id",
-  requireAdmin,
-  async (req: Request, res: Response, next: NextFunction) => {
+  requireAdminScope("flags:write"),
+  async (req: AdminRequest, res: Response, next: NextFunction) => {
     try {
-      const actor = req.adminWallet ?? (req.body?.updatedBy as string);
+      const actor = req.admin?.sub ?? (req.body?.updatedBy as string);
       if (!actor) {
         res.status(401).json({ error: "unauthorized", message: "Admin identity required." });
         return;
       }
-      await maintenanceBannerService.remove(req.params.id, actor);
+      await maintenanceBannerService.remove(String(req.params.id), actor);
       res.status(204).send();
     } catch (err) {
       handleError(err, res, next);

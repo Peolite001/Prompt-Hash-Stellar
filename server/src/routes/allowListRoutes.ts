@@ -136,8 +136,8 @@ allowListRouter.put("/override", allowListOverrideLimiter, requireAdminScope("al
     actor,
     target: "system_config:allow_list_override",
     targetType: "admin_config",
-    beforeState,
-    afterState: updated,
+    beforeState: { ...beforeState },
+    afterState: { ...updated },
     reason: reason.trim(),
     requestId: req.requestId ?? null,
   });
@@ -157,8 +157,8 @@ allowListRouter.delete("/override", allowListOverrideLimiter, requireAdminScope(
     actor,
     target: "system_config:allow_list_override",
     targetType: "admin_config",
-    beforeState,
-    afterState: cleared,
+    beforeState: { ...beforeState },
+    afterState: { ...cleared },
     reason,
     requestId: req.requestId ?? null,
   });

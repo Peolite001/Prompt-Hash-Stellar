@@ -38,6 +38,13 @@ export const AUDIT_ACTIONS = [
   "prompt_retire",
   "moderation_unauthorized",
   "moderation_error",
+  "moderation_approve",
+  "moderation_reject",
+  "moderation_hide",
+  "moderation_restore",
+  "moderation_rollback",
+  // bulk operations
+  "bulk_import_completed",
   // disputed purchase resolution (#755)
   "dispute_unlock_failed",
   "dispute_unlock_succeeded",
@@ -103,34 +110,46 @@ export const AUDIT_ACTIONS = [
   "maintainer_grant_revoked",
   "maintainer_grant_used",
   "maintainer_grant_denied",
-] as const;
-
-export type AuditAction = (typeof AUDIT_ACTIONS)[number];
-
-export type AuditResult = "success" | "failure" | "blocked";
-
-/**
- * Actions the schema historically accepted on top of `AUDIT_ACTIONS`. They are
- * kept so existing rows and call sites (support access, notification prefs)
- * never lose persistence, while `AUDIT_ACTIONS` stays the single typed
- * contract. The schema enum below is the union of both — deriving it from
- * `AUDIT_ACTIONS` is what guarantees a newly declared action can actually be
- * persisted instead of being silently dropped by Mongoose validation
- * (regression fixed for `abuse_risk_*` in #1046).
- */
-const LEGACY_SCHEMA_ACTIONS = [
-  "notification_preference_updated",
-  "notification_mandatory_delivered",
+  // support access
   "support_access_granted",
   "support_access_revoked",
   "support_access_used",
   "support_access_denied",
+  // notification preferences / mandatory delivery
+  "notification_preference_updated",
+  "notification_mandatory_delivered",
+  // category taxonomy (#783)
+  "category_created",
+  "category_renamed",
+  "category_merged",
+  "category_deprecated",
+  // permalink lifecycle
+  "prompt_permalink_renamed",
+  "prompt_permalink_archived",
+  "prompt_permalink_restored",
+  "prompt_permalink_restricted",
+  "prompt_permalink_deleted",
+  // provenance records
+  "provenance_record_created",
+  "provenance_verified",
+  "provenance_disputed",
+  "provenance_deleted",
+  "prompt.derived",
+  "prompt.updated",
+  "prompt.archived",
+  "prompt.restored",
 ] as const;
 
-export const AUDIT_SCHEMA_ACTIONS: readonly string[] = [
-  ...AUDIT_ACTIONS,
-  ...LEGACY_SCHEMA_ACTIONS,
-];
+export type AuditAction = (typeof AUDIT_ACTIONS)[number];
+
+export type AuditResult = "success" | "failure" | "blocked" | "denied" | "partial_success";
+
+/**
+ * Deriving the schema enum from `AUDIT_ACTIONS` guarantees that every typed
+ * action can actually be persisted instead of being silently dropped by
+ * Mongoose validation (regression fixed for `abuse_risk_*` in #1046).
+ */
+export const AUDIT_SCHEMA_ACTIONS: readonly string[] = [...AUDIT_ACTIONS];
 
 const auditLogSchema = new mongoose.Schema(
   {
@@ -143,7 +162,7 @@ const auditLogSchema = new mongoose.Schema(
     result: {
       type: String,
       required: true,
-      enum: ["success", "failure", "blocked"] as AuditResult[],
+      enum: ["success", "failure", "blocked", "denied", "partial_success"] as AuditResult[],
       index: true,
     },
     promptId: {

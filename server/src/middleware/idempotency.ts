@@ -109,7 +109,7 @@ export function requireIdempotency(
           statusCode: res.statusCode,
         });
         void completeIdempotentRequest({
-          recordId: decision.record._id,
+          recordId: (decision.record as { _id?: unknown })._id,
           statusCode: res.statusCode,
           responseBody,
         });

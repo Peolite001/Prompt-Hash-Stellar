@@ -26,7 +26,7 @@ import {
   type LifecycleFailureReason,
   type LifecycleKind,
   type LifecycleWorkflow,
-} from "./lifecycleStages";
+} from "./lifecycleStages.js";
 
 // ─── Ingest / normalisation ──────────────────────────────────────────────────
 

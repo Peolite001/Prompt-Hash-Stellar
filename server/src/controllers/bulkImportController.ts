@@ -15,6 +15,7 @@ import { policyLimitService } from "../services/policyLimitService";
 import { logger } from "../services/structuredLogger";
 import { recordAuditEvent } from "../services/auditTrail";
 import { enforceContentAllowList, enforceUrlAllowList } from "../services/allowListPolicy";
+import { paramString } from "./requestParams";
 
 /**
  * Bulk Import Controller (Issue #929)
@@ -219,7 +220,7 @@ export async function bulkImportPrompts(
           .update(`${batchId}:${index}:prompt`)
           .digest("hex")
           .slice(0, 24);
-        const prompt = await execution.step(`prompt_${index}`, promptId, () =>
+        const prompt = (await execution.step(`prompt_${index}`, promptId, () =>
           Prompt.findOneAndUpdate(
             { _id: promptId },
             {
@@ -238,7 +239,7 @@ export async function bulkImportPrompts(
             },
             { upsert: true, new: true, runValidators: true },
           ),
-        );
+        )) as unknown as { _id: { toString(): string } };
 
         // Create provenance record
         const provenanceRecord = await provenanceService.createProvenanceRecord(
@@ -428,7 +429,7 @@ export async function getBulkImportStatus(
     const { batchId } = req.params;
 
     const provenanceRecords = await provenanceService.queryProvenance({
-      batchId,
+      batchId: paramString(batchId),
       limit: 1000,
     });
 

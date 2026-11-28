@@ -17,14 +17,15 @@
 
 import { Request, Response } from "express";
 import connectDb from "../db/connectDb";
-import Notification from "../models/Notification";
-import {
-  NotificationPreferenceError,
-  getEffectivePreferences,
-  updateNotificationPreferences,
-  type PreferencePatch,
-} from "../services/notificationPreferences";
-import { MANDATORY_NOTIFICATION_TYPES, OPTIONAL_NOTIFICATION_TYPES } from "../models/Notification";
+import Notification, {
+  NOTIFICATION_TYPES,
+  type NotificationType,
+} from "../models/Notification";
+import NotificationPreferences from "../models/NotificationPreferences";
+import { paramString } from "./requestParams";
+
+const PAGE_LIMIT_DEFAULT = 20;
+const PAGE_LIMIT_MAX = 100;
 
 // ── List ──────────────────────────────────────────────────────────────────────
 
@@ -49,14 +50,14 @@ export const GetNotifications = async (
     const skip = (page - 1) * limit;
 
     const filter: Record<string, unknown> = {
-      recipientWallet: walletAddress.toLowerCase(),
+      recipientWallet: paramString(walletAddress).toLowerCase(),
     };
 
     // Optional: filter to unread only
     if (req.query.unread === "true") filter.read = false;
 
     // Optional: filter by notification type
-    const typeParam = req.query.type as string | undefined;
+    const typeParam = paramString(req.query.type);
     if (
       typeParam &&
       NOTIFICATION_TYPES.includes(typeParam as NotificationType)
@@ -98,7 +99,7 @@ export const GetUnreadCount = async (
       return res.status(400).json({ error: "walletAddress is required." });
 
     const count = await Notification.countDocuments({
-      recipientWallet: walletAddress.toLowerCase(),
+      recipientWallet: paramString(walletAddress).toLowerCase(),
       read: false,
     });
 
@@ -127,7 +128,7 @@ export const MarkAsRead = async (
     if (!walletAddress)
       return res.status(400).json({ error: "walletAddress is required." });
 
-    const wallet = walletAddress.toLowerCase();
+    const wallet = paramString(walletAddress).toLowerCase();
     const { notificationId } = req.body as { notificationId?: string };
 
     if (notificationId) {
@@ -177,7 +178,7 @@ export const ClearNotifications = async (
       return res.status(400).json({ error: "walletAddress is required." });
 
     const result = await Notification.deleteMany({
-      recipientWallet: walletAddress.toLowerCase(),
+      recipientWallet: paramString(walletAddress).toLowerCase(),
     });
 
     return res.json({
@@ -202,13 +203,13 @@ export const GetNotificationPreferences = async (
       return res.status(400).json({ error: "walletAddress is required." });
 
     const prefs = await NotificationPreferences.findOne({
-      walletAddress: walletAddress.toLowerCase(),
+      walletAddress: paramString(walletAddress).toLowerCase(),
     }).lean();
 
     // Return defaults when no preferences document exists yet.
     return res.json(
       prefs ?? {
-        walletAddress: walletAddress.toLowerCase(),
+        walletAddress: paramString(walletAddress).toLowerCase(),
         mutedTypes: [],
         emailEnabled: false,
       },
@@ -259,77 +260,13 @@ export const UpdateNotificationPreferences = async (
     }
 
     const prefs = await NotificationPreferences.findOneAndUpdate(
-      { walletAddress: walletAddress.toLowerCase() },
+      { walletAddress: paramString(walletAddress).toLowerCase() },
       { $set: update },
       { upsert: true, new: true },
     );
 
     return res.json(prefs);
   } catch (err) {
-    return res.status(500).json({ error: (err as Error).message });
-  }
-};
-
-/**
- * GET /api/notifications/:walletAddress/preferences
- * Effective notification preferences plus the type policy, so clients can
- * render which alerts are configurable and which are mandatory.
- */
-export const GetNotificationPreferences = async (req: Request, res: Response): Promise<Response> => {
-  try {
-    await connectDb();
-    const { walletAddress } = req.params;
-
-    if (!walletAddress) {
-      return res.status(400).json({ error: "walletAddress is required." });
-    }
-
-    const preferences = await getEffectivePreferences(walletAddress);
-    return res.json({
-      preferences,
-      optionalTypes: OPTIONAL_NOTIFICATION_TYPES,
-      mandatoryTypes: MANDATORY_NOTIFICATION_TYPES,
-    });
-  } catch (err) {
-    return res.status(500).json({ error: (err as Error).message });
-  }
-};
-
-/**
- * PUT /api/notifications/:walletAddress/preferences
- * Body: { preferences: { <optionalType>: { inApp?: boolean, email?: boolean } } }
- * Mandatory lifecycle/security types are rejected — they are always routed.
- */
-export const UpdateNotificationPreferences = async (
-  req: Request,
-  res: Response,
-): Promise<Response> => {
-  try {
-    await connectDb();
-    const { walletAddress } = req.params;
-
-    if (!walletAddress) {
-      return res.status(400).json({ error: "walletAddress is required." });
-    }
-
-    const patch = (req.body?.preferences ?? req.body) as PreferencePatch;
-    if (!patch || typeof patch !== "object" || Array.isArray(patch)) {
-      return res.status(400).json({ error: "preferences object is required." });
-    }
-
-    const preferences = await updateNotificationPreferences(walletAddress, patch, {
-      requestId: req.correlationId ?? null,
-    });
-
-    return res.json({
-      preferences,
-      optionalTypes: OPTIONAL_NOTIFICATION_TYPES,
-      mandatoryTypes: MANDATORY_NOTIFICATION_TYPES,
-    });
-  } catch (err) {
-    if (err instanceof NotificationPreferenceError) {
-      return res.status(400).json({ error: err.message, code: err.code });
-    }
     return res.status(500).json({ error: (err as Error).message });
   }
 };

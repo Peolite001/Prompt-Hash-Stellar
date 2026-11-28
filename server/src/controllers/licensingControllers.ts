@@ -8,6 +8,7 @@ import {
   resolveCurrentLicense,
   updatePromptLicense,
 } from "../services/licensingService";
+import { paramString } from "./requestParams";
 
 /**
  * Public catalog of license templates creators can adopt (#759).
@@ -78,7 +79,7 @@ export const GetPromptLicense = async (
     if (!promptId) {
       return res.status(400).json({ error: "promptId is required." });
     }
-    const license = await resolveCurrentLicense(promptId);
+    const license = await resolveCurrentLicense(paramString(promptId));
     return res.json({ license });
   } catch (err) {
     console.error("Get prompt license error:", err);
@@ -97,7 +98,10 @@ export const GetPurchaseReceipt = async (
   try {
     markPrivate(res);
     const { walletAddress, promptId } = req.params;
-    const result = await getPurchaseReceipt(promptId, walletAddress);
+    const result = await getPurchaseReceipt(
+      paramString(promptId),
+      paramString(walletAddress),
+    );
     if (!result.ok) {
       return res.status(result.status).json({ error: result.error });
     }
@@ -118,7 +122,10 @@ export const GetLicenseDisputeView = async (
 ): Promise<Response> => {
   try {
     const { walletAddress, promptId } = req.params;
-    const result = await getLicenseSnapshotForDispute(promptId, walletAddress);
+    const result = await getLicenseSnapshotForDispute(
+      paramString(promptId),
+      paramString(walletAddress),
+    );
     if (!result.ok) {
       return res.status(result.status).json({ error: result.error });
     }

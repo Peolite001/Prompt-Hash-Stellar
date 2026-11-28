@@ -26,7 +26,7 @@ const eventJournalSchema = new mongoose.Schema(
 // Replay order: ledger, then event id (Soroban event ids sort within a ledger).
 eventJournalSchema.index({ ledger: 1, eventId: 1 });
 
-eventJournalSchema.pre("findOneAndUpdate", function () {
+eventJournalSchema.pre("findOneAndUpdate", function (this: any) {
   // Only the idempotent `$setOnInsert` append is allowed.
   const update = this.getUpdate() as Record<string, unknown> | null;
   if (update && Object.keys(update).some((op) => op !== "$setOnInsert")) {

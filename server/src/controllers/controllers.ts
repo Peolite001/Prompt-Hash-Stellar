@@ -27,20 +27,22 @@ import {
   invalidatePromptCaches,
   DEFAULT_TTL_SECONDS,
 } from "../services/cacheService.js";
-import MaintenanceBanner from "../models/MaintenanceBanner.js";
 import { sendConditionalJson, markPrivate } from "../middleware/etag.js";
 import { notifyPromptReported } from "../services/emailNotifications.js";
 import { announceNewPrompt } from "../services/discordNotifications.js";
 import { logger } from "../services/structuredLogger.js";
 import { checkSimilarityForContent } from "../services/similarityDetection.js";
 import {
+  buildPublicVisibilityFilter,
+  stripSensitivePromptFields,
+} from "../services/visibilityService.js";
+import {
   parsePaginationParams,
   buildMongoCompoundQuery,
   encodeCompoundCursor,
   PaginationError,
-  buildPublicVisibilityFilter,
-  stripSensitivePromptFields,
-} from "../services/visibilityService.js";
+} from "../utils/pagination.js";
+import { paramString } from "./requestParams";
 
 /* AI PROVIDER BOUNDARY (#29)
  *
@@ -182,7 +184,7 @@ export const GetPrompts = async (
 
     if (walletAddress) {
       const user = await User.findOne({
-        walletAddress: walletAddress.toLowerCase(),
+        walletAddress: paramString(walletAddress).toLowerCase(),
       }).lean();
       if (user) {
         query.owner = user._id;
@@ -253,7 +255,7 @@ export const GetOwnedPrompts = async (
     const limit = Math.min(parseInt(limitParam as string) || 20, 50);
     const cursor = req.query.cursor as string;
 
-    const query: any = { buyerWallet: walletAddress.toLowerCase() };
+    const query: any = { buyerWallet: paramString(walletAddress).toLowerCase() };
 
     if (cursor) {
       query._id = { $lt: cursor };
@@ -308,7 +310,7 @@ export const CreateUser = async (
 
     // Check if user already exists
     const existingUser = await User.findOne({
-      walletAddress: walletAddress.toLowerCase(),
+      walletAddress: paramString(walletAddress).toLowerCase(),
     });
 
     if (existingUser) {
@@ -324,7 +326,7 @@ export const CreateUser = async (
 
     // Create new user if doesn't exist
     const newUser = new User({
-      walletAddress: walletAddress.toLowerCase(),
+      walletAddress: paramString(walletAddress).toLowerCase(),
       username: generatedUsername,
       rating: 4,
     });
@@ -358,7 +360,7 @@ export const GetUsers = async (
 
     if (walletAddress) {
       const user = await User.findOne({
-        walletAddress: walletAddress.toLowerCase(),
+        walletAddress: paramString(walletAddress).toLowerCase(),
       });
 
       if (!user) {
@@ -669,7 +671,7 @@ export const GetSavedPrompts = async (
     }
 
     const user = await User.findOne({
-      walletAddress: walletAddress.toLowerCase(),
+      walletAddress: paramString(walletAddress).toLowerCase(),
     });
     if (!user) {
       return res.status(404).json({ error: "User not found." });
@@ -709,7 +711,7 @@ export const SavePrompt = async (
     }
 
     const user = await User.findOne({
-      walletAddress: walletAddress.toLowerCase(),
+      walletAddress: paramString(walletAddress).toLowerCase(),
     });
     if (!user) {
       return res.status(404).json({ error: "User not found." });
@@ -749,7 +751,7 @@ export const UnsavePrompt = async (
     }
 
     const user = await User.findOne({
-      walletAddress: walletAddress.toLowerCase(),
+      walletAddress: paramString(walletAddress).toLowerCase(),
     });
     if (!user) {
       return res.status(404).json({ error: "User not found." });
@@ -782,7 +784,7 @@ export const GetDraftPrompts = async (
     }
 
     const user = await User.findOne({
-      walletAddress: walletAddress.toLowerCase(),
+      walletAddress: paramString(walletAddress).toLowerCase(),
     });
     if (!user) {
       return res.status(404).json({ error: "User not found." });
@@ -896,7 +898,7 @@ export const GetPromptsByContentHash = async (
     }
 
     // Validate hash format (should be hex string, typically 32 or 64 chars)
-    if (!/^[a-f0-9]{32,128}$/i.test(contentHash)) {
+    if (!/^[a-f0-9]{32,128}$/i.test(paramString(contentHash))) {
       return res.status(400).json({ error: "Invalid content hash format." });
     }
 

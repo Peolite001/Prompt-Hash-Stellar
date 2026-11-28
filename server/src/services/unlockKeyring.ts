@@ -27,8 +27,8 @@ import {
   isValidUnlockKeyId,
   parseWrappedKey,
   WrappedKeyFormatError,
-} from "../../../src/lib/crypto/wrappedKeyFormat";
-import { isPlaceholder } from "../../../src/lib/validation/placeholders";
+} from "../lib/crypto/wrappedKeyFormat.js";
+import { isPlaceholder } from "../lib/validation/placeholders.js";
 
 const DEFAULT_SINGLE_KEY_ID = "unlock-v1";
 const BASE64_KEY = /^[A-Za-z0-9+/=]{20,}$/;

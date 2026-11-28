@@ -1,4 +1,4 @@
-import mongoose, { Schema, type InferDocumentType, type Model } from "mongoose";
+import mongoose, { Schema, type Model } from "mongoose";
 
 /**
  * Scopes that a maintenance banner can target.
@@ -97,5 +97,10 @@ export const MaintenanceBanner =
     maintenanceBannerSchema,
   );
 
+export default MaintenanceBanner;
+
 export type MaintenanceBannerLeanConstructor = MaintenanceBannerDocument;
-export type MaintenanceBannerInput = InferDocumentType<MaintenanceBannerDocument>;
+export type MaintenanceBannerInput = Omit<
+  MaintenanceBannerDocument,
+  keyof mongoose.Document | "createdAt" | "updatedAt"
+>;

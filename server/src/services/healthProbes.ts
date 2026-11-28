@@ -64,7 +64,7 @@ export async function probeChallenge(config: HealthProbeConfig): Promise<ProbeRe
       verifyChallengeToken,
       buildChallengeMessage,
       verifyChallengeSignature,
-    } = await import("../../../src/lib/auth/challenge.js" as string);
+    } = await import("../lib/auth/challenge.js");
 
     // Create challenge token
     const challenge = createChallengeToken(

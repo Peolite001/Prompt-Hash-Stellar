@@ -21,7 +21,7 @@ export async function handleSettlementPoll(job: JobRecordDTO): Promise<void> {
   //
   // For the skeleton, we simulate with Purchase lookup when available.
   try {
-    const Purchase = (await import("../../models/Purchase")).default;
+    const Purchase = (await import("../../models/Purchase.js") as any).default;
     const existing = await Purchase.findOne({ promptId: String(promptId), buyerWallet: String(buyerWallet).toLowerCase() });
     if (existing && existing.status === "purchased" && existing.txHash) {
       // Already settled — idempotent no-op

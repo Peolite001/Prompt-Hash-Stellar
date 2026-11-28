@@ -1,4 +1,6 @@
 import Notification, { NotificationType } from "../models/Notification";
+import NotificationPreferences from "../models/NotificationPreferences";
+import { logger } from "./structuredLogger";
 
 export interface CreateNotificationOptions {
   recipientWallet: string;
@@ -156,4 +158,164 @@ export class NotificationService {
       .sort({ createdAt: -1 })
       .exec();
   }
+}
+
+/**
+ * Legacy notification type names still emitted by older indexer projections.
+ * They are normalised to the current persisted enum before writing.
+ */
+export type LegacyNotificationType =
+  | "purchase_confirmed"
+  | "dispute_opened"
+  | "dispute_resolved"
+  | "payout_available"
+  | "moderation_action"
+  | "ownership_transfer"
+  | "system";
+
+export type NotificationDeliveryType = NotificationType | LegacyNotificationType;
+
+export interface NotificationFunctionParams {
+  recipientWallet: string;
+  type: NotificationDeliveryType;
+  message: string;
+  deepLink?: string | null;
+  promptId?: string | null;
+  promptTitle?: string;
+  versionIndex?: number | null;
+  changeNote?: string;
+  /** Stable idempotency key — typically the on-chain event id. */
+  idempotencyKey?: string | null;
+}
+
+const LEGACY_NOTIFICATION_TYPES: Record<LegacyNotificationType, NotificationType> = {
+  purchase_confirmed: "purchase_receipt",
+  dispute_opened: "account_lifecycle",
+  dispute_resolved: "account_lifecycle",
+  payout_available: "entitlement_update",
+  moderation_action: "security_alert",
+  ownership_transfer: "account_lifecycle",
+  system: "account_lifecycle",
+};
+
+function normalizeNotificationType(type: NotificationDeliveryType): NotificationType {
+  return type in LEGACY_NOTIFICATION_TYPES
+    ? LEGACY_NOTIFICATION_TYPES[type as LegacyNotificationType]
+    : (type as NotificationType);
+}
+
+const NOTIFICATION_RETENTION_DAYS = 90;
+
+/**
+ * Idempotent, preference-aware notification write used by the indexer and
+ * controllers. Returns `null` when the recipient muted the type or the
+ * idempotency key was already delivered.
+ */
+export async function createNotification(
+  params: NotificationFunctionParams,
+): Promise<InstanceType<typeof Notification> | null> {
+  const wallet = params.recipientWallet.trim().toLowerCase();
+  const type = normalizeNotificationType(params.type);
+  if (!wallet) throw new Error("Recipient wallet is required");
+
+  try {
+    const prefs = await NotificationPreferences.findOne({ walletAddress: wallet }).lean<{
+      mutedTypes?: string[];
+    } | null>();
+    if (prefs?.mutedTypes?.includes(type)) {
+      logger.debug("Notification suppressed by user preference", {
+        action: "createNotification",
+        type,
+        wallet,
+      });
+      return null;
+    }
+  } catch (prefErr) {
+    // Preference lookup failure must never block delivery.
+    logger.warn("Failed to load notification preferences; proceeding", {
+      action: "createNotification",
+      wallet,
+      error: prefErr,
+    });
+  }
+
+  const idempotencyKey = params.idempotencyKey?.trim() || undefined;
+  const doc: Record<string, unknown> = {
+    recipientWallet: wallet,
+    type,
+    message: params.message,
+    deepLink: params.deepLink ?? null,
+    promptId: params.promptId ?? null,
+    promptTitle: params.promptTitle ?? "",
+    versionIndex: params.versionIndex ?? null,
+    changeNote: params.changeNote ?? "",
+    read: false,
+    ...(idempotencyKey ? { idempotencyKey } : {}),
+  };
+
+  try {
+    return await Notification.create(doc);
+  } catch (err: unknown) {
+    if ((err as { code?: number }).code === 11000) {
+      logger.debug("Notification already exists for idempotency key", {
+        action: "createNotification",
+        idempotencyKey,
+        wallet,
+      });
+      return null;
+    }
+    throw err;
+  }
+}
+
+/** Deliver one notification per recipient with a wallet-scoped dedupe key. */
+export async function fanOutNotification(
+  recipientWallets: (string | undefined | null)[],
+  params: Omit<NotificationFunctionParams, "recipientWallet">,
+): Promise<void> {
+  const wallets = recipientWallets.filter((w): w is string => Boolean(w));
+  await Promise.allSettled(
+    wallets.map((wallet) =>
+      createNotification({
+        ...params,
+        recipientWallet: wallet,
+        idempotencyKey: params.idempotencyKey
+          ? `${params.idempotencyKey}:${wallet.toLowerCase()}`
+          : undefined,
+      }).catch((err: unknown) => {
+        logger.error("fanOutNotification failed for one recipient", {
+          action: "fanOutNotification",
+          wallet,
+          error: err,
+        });
+      }),
+    ),
+  );
+}
+
+/** Batched fallback for the TTL index; deletes only read, expired rows. */
+export async function pruneOldNotifications(
+  retentionDays: number = NOTIFICATION_RETENTION_DAYS,
+  batchSize: number = 500,
+): Promise<number> {
+  const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+  let totalDeleted = 0;
+
+  for (;;) {
+    const docs = await Notification.find(
+      { read: true, createdAt: { $lt: cutoff } },
+      { _id: 1 },
+    )
+      .limit(batchSize)
+      .lean<{ _id: unknown }[]>();
+
+    if (docs.length === 0) break;
+    const result = await Notification.deleteMany({
+      _id: { $in: docs.map((d: { _id: unknown }) => d._id) },
+    });
+    totalDeleted += result.deletedCount;
+    if (docs.length < batchSize) break;
+  }
+
+  return totalDeleted;
 }

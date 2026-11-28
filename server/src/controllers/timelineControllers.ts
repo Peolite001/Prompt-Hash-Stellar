@@ -5,6 +5,7 @@
 import { Request, Response } from "express";
 import { TimelineService } from "../services/timelineService";
 import { logger } from "../services/structuredLogger";
+import { paramString } from "./requestParams";
 
 export const GetTimeline = async (
   req: Request,
@@ -19,12 +20,12 @@ export const GetTimeline = async (
     }
 
     const result = await TimelineService.getTimeline({
-      wallet: walletAddress,
-      limit: parseInt(limit as string) || 20,
-      cursor: cursor as string,
+      wallet: paramString(walletAddress),
+      limit: parseInt(paramString(limit), 10) || 20,
+      cursor: paramString(cursor),
       includeMaintainer: includeMaintainer === "true",
       eventTypes: eventTypes
-        ? (eventTypes as string).split(",") as any
+        ? (paramString(eventTypes).split(",") as any)
         : undefined,
     });
 
@@ -52,10 +53,10 @@ export const GetResourceTimeline = async (
     }
 
     const result = await TimelineService.getResourceTimeline({
-      resourceType,
-      resourceId,
-      limit: parseInt(limit as string) || 20,
-      cursor: cursor as string,
+      resourceType: paramString(resourceType),
+      resourceId: paramString(resourceId),
+      limit: parseInt(paramString(limit), 10) || 20,
+      cursor: paramString(cursor),
     });
 
     return res.json(result);

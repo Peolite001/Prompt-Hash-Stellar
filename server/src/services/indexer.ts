@@ -1,4 +1,4 @@
-import { rpc, scValToNative } from "@stellar/stellar-sdk";
+import { rpc as StellarRpc, scValToNative } from "@stellar/stellar-sdk";
 import connectDb from "../db/connectDb";
 import Prompt from "../models/Prompt";
 import User from "../models/User";
@@ -10,6 +10,9 @@ import ProcessedEvent from "../models/ProcessedEvent";
 import QuarantinedEvent from "../models/QuarantinedEvent";
 import { scanForSimilarity } from "./similarityDetection";
 import { enqueue as enqueueWebhookEvent } from "./webhookOutbox";
+import { createNotification, fanOutNotification } from "./notificationService";
+import { snapshotLicenseForPurchase } from "./licensingService";
+import { applySafetyScan } from "./safetyScannerHook";
 import {
   cacheDel,
   cacheDelPattern,
@@ -20,7 +23,7 @@ import {
   METADATA_TTL_SECONDS,
 } from "./cacheService";
 import os from "os";
-import { decodeEvent } from "@prompthash/sdk";
+import { decodeEvent } from "../lib/sdk/events/decode.js";
 import { logger } from "./structuredLogger";
 import { applyDisputeTransition } from "./purchaseDisputes";
 import { trackBlockchainIndexing } from "../middleware/provenanceMiddleware";
@@ -81,9 +84,31 @@ async function ensureUser(walletAddress: string) {
   return user;
 }
 
+/**
+ * Enqueue a durable webhook delivery for a wallet. Delivery failures are
+ * logged and swallowed so indexing never stalls on subscriber problems.
+ */
+async function notify(
+  wallet: string | undefined | null,
+  event: string,
+  data: Record<string, unknown>,
+  dedupeKey: string,
+): Promise<void> {
+  if (!wallet) return;
+  try {
+    await enqueueWebhookEvent(wallet, event, data, dedupeKey);
+  } catch (err: unknown) {
+    logger.error("Webhook enqueue failed", {
+      action: "indexer",
+      event,
+      error: err,
+    });
+  }
+}
+
 
 const CONTRACT_ID = process.env.PUBLIC_PROMPT_HASH_CONTRACT_ID;
-const server = new rpc.Server(process.env.PUBLIC_STELLAR_RPC_URL!);
+const server = new StellarRpc.Server(process.env.PUBLIC_STELLAR_RPC_URL!);
 
 /**
  * Main entry point to start the background indexing process.
@@ -126,7 +151,7 @@ export async function startIndexer() {
 
       const response = await server.getEvents({
         startLedger,
-        filters: [{ type: "contract", contractIds: [contractId] }],
+        filters: [{ type: "contract", contractIds: [CONTRACT_ID] }],
       });
 
       let lastFinalizedLedger = state.lastFinalizedLedger || 0;
@@ -146,7 +171,7 @@ export async function startIndexer() {
       const current = await IndexerState.findOne({
         key: "prompt_hash_contract",
       });
-      if (!current || current.fencingToken !== myToken) {
+      if (!current || current.fencingToken !== state.fencingToken) {
         logger.warn("Fencing token mismatch - checkpoint discarded", {
           action: "indexerTick",
         });
@@ -389,11 +414,21 @@ export async function routeDecodedEvent(
         { upsert: true },
       );
 
+      const indexedPrompt = prompt as unknown as {
+        title?: string;
+        description?: string;
+        category?: string;
+        tags?: string[];
+        preview?: string;
+        content?: string;
+        encryptedPrompt?: unknown;
+      } | null;
+
       // Run similarity scan asynchronously — never block the indexer loop.
-      if (upserted?.content) {
-        const combinedText = `${upserted.title ?? ""} ${upserted.content}`;
-        scanForSimilarity(promptId, combinedText, upserted.category).catch(
-          (err) =>
+      if (indexedPrompt?.content) {
+        const combinedText = `${indexedPrompt.title ?? ""} ${indexedPrompt.content}`;
+        scanForSimilarity(promptId, combinedText, indexedPrompt.category).catch(
+          (err: unknown) =>
             logger.error("Similarity scan error", {
               action: "similarityScan",
               promptId,
@@ -405,15 +440,15 @@ export async function routeDecodedEvent(
       // Run the prompt safety scanner asynchronously (#758) — queued or
       // blocked prompts are hidden from the public marketplace until a
       // maintainer overrides. The encrypted payload never enters the scanner.
-      if (upserted) {
+      if (indexedPrompt) {
         applySafetyScan(promptId, {
-          title: upserted.title,
-          description: upserted.description,
-          category: upserted.category,
-          tags: upserted.tags,
-          preview: upserted.preview,
-          payload: upserted.encryptedPrompt ?? undefined,
-        }).catch((err) =>
+          title: indexedPrompt.title,
+          description: indexedPrompt.description,
+          category: indexedPrompt.category,
+          tags: indexedPrompt.tags,
+          preview: indexedPrompt.preview,
+          payload: typeof indexedPrompt.encryptedPrompt === "string" ? indexedPrompt.encryptedPrompt : undefined,
+        }).catch((err: unknown) =>
           logger.error("Safety scan error", { action: "safetyScan", promptId, error: err }),
         );
       }
@@ -421,16 +456,14 @@ export async function routeDecodedEvent(
       // Track blockchain provenance for on-chain prompts (#929) — creates
       // a provenance record with blockchain source metadata. This runs
       // asynchronously and must never block the indexer loop.
-      trackBlockchainIndexing(
-        String(prompt._id),
-        {
-          transactionHash: txHash,
-          ledgerNumber: ledger,
-          onChainId: promptId,
-          contractId: CONTRACT_ID,
-        },
-        creator,
-      ).catch((err) =>
+      trackBlockchainIndexing({
+        promptId: String(prompt._id),
+        onChainId: promptId,
+        creatorWallet: String(creator),
+        ledgerSequence: ledger ?? 0,
+        transactionHash: txHash ?? "",
+        eventType: "PromptCreated",
+      }).catch((err: unknown) =>
         logger.error("Provenance tracking error", {
           action: "blockchainProvenance",
           promptId,
@@ -473,7 +506,7 @@ export async function routeDecodedEvent(
           promptId,
           buyerWallet,
           String(purchaseDoc?._id ?? ""),
-        ).catch((err) =>
+        ).catch((err: unknown) =>
           logger.error("license snapshot hook failed", {
             action: "indexer",
             promptId,
@@ -511,7 +544,7 @@ export async function routeDecodedEvent(
           promptId,
           promptTitle,
           idempotencyKey: `${eventId}:buyer:${buyerAddr.toLowerCase()}`,
-        }).catch((err) =>
+        }).catch((err: unknown) =>
           logger.error("Failed to create purchase_confirmed notification", {
             action: "indexer",
             error: err,
@@ -527,7 +560,7 @@ export async function routeDecodedEvent(
           promptId,
           promptTitle,
           idempotencyKey: `${eventId}:creator:${ownerWallet.toLowerCase()}`,
-        }).catch((err) =>
+        }).catch((err: unknown) =>
           logger.error("Failed to create sale notification for creator", {
             action: "indexer",
             error: err,
@@ -587,7 +620,7 @@ export async function routeDecodedEvent(
           promptTitle: transferTitle,
           idempotencyKey: eventId,
         },
-      ).catch((err) =>
+      ).catch((err: unknown) =>
         logger.error("Failed to create ownership_transfer notifications", {
           action: "indexer",
           error: err,

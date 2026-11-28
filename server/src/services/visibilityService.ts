@@ -18,11 +18,12 @@ import {
   type RecordVisibility,
   type ViewerContext,
   type VisibilityEvaluation,
-} from "../../../packages/schema/src/visibility.js";
+} from "../schema/visibility.js";
 
 import { logger } from "./structuredLogger.js";
 import { recordAuditEvent } from "./auditTrail.js";
 import { cacheDel } from "./cacheService.js";
+import type { AuditAction, AuditResult } from "../models/AuditLog.js";
 
 export {
   evaluateVisibility,
@@ -283,8 +284,8 @@ export async function logVisibilityViolation(params: {
 }): Promise<void> {
   try {
     await recordAuditEvent({
-      action: params.action,
-      result: "denied",
+      action: params.action as AuditAction,
+      result: "denied" as AuditResult,
       promptId: params.promptId,
       walletAddress: params.attemptedBy || null,
       reason: params.reason,

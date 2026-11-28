@@ -5,6 +5,7 @@
 import { Request, Response } from "express";
 import { InvitationService } from "../services/invitationService";
 import { logger } from "../services/structuredLogger";
+import { paramString } from "./requestParams";
 
 export const CreateInvitation = async (
   req: Request,
@@ -58,7 +59,7 @@ export const AcceptInvitation = async (
     }
 
     const { success, error } = await InvitationService.accept({
-      invitationId,
+      invitationId: paramString(invitationId),
       inviteeWallet,
       currentRole,
     });
@@ -92,7 +93,7 @@ export const RevokeInvitation = async (
     }
 
     const { success, error } = await InvitationService.revoke({
-      invitationId,
+      invitationId: paramString(invitationId),
       revokerWallet,
     });
 
@@ -125,11 +126,11 @@ export const ListInvitations = async (
     }
 
     const result = await InvitationService.list({
-      wallet: walletAddress,
+      wallet: paramString(walletAddress),
       direction: (direction as "incoming" | "outgoing") || "incoming",
       status: status as any,
-      limit: parseInt(limit as string) || 20,
-      cursor: cursor as string,
+      limit: parseInt(paramString(limit), 10) || 20,
+      cursor: paramString(cursor),
     });
 
     return res.json(result);

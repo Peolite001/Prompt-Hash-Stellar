@@ -1,7 +1,7 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "crypto";
 import { Buffer } from "buffer";
 import { Keypair } from "@stellar/stellar-sdk";
-import { hashKey, nonceStore } from "../observability/sharedStore";
+import { hashKey, nonceStore } from "../observability/sharedStore.js";
 
 const DEFAULT_TTL_MS = 5 * 60 * 1000;
 

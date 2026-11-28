@@ -1,6 +1,19 @@
 import { LedgerEntry, LedgerEntryType, ILedgerEntry } from "../models/LedgerEntry";
 import { DomainInvariantsService } from "./domainInvariants";
 
+type LedgerEntryRow = Pick<
+  ILedgerEntry,
+  | "creatorAddress"
+  | "entryType"
+  | "promptId"
+  | "amount"
+  | "currency"
+  | "stellarTxRef"
+  | "referenceId"
+  | "description"
+  | "createdAt"
+> & { _id: unknown };
+
 /**
  * Upper bound on rows materialised by a single ledger export or balance scan
  * (#983). `GET /api/payouts/admin/export` with no `creatorAddress` used to
@@ -258,7 +271,7 @@ export async function getCreatorPayoutSummaryView(creatorAddress: string) {
   return {
     summary,
     reconciliation,
-    recentEntries: entries.map((e) => ({
+    recentEntries: entries.map((e: LedgerEntryRow) => ({
       id: String(e._id),
       entryType: e.entryType,
       promptId: e.promptId,
@@ -344,7 +357,7 @@ export async function exportLedgerReportBounded(
   return {
     truncated,
     scanLimit: limit,
-    rows: page.map((e) => ({
+    rows: page.map((e: LedgerEntryRow) => ({
       entryId: String(e._id),
       createdAt: new Date(e.createdAt).toISOString(),
       creatorAddress: e.creatorAddress,

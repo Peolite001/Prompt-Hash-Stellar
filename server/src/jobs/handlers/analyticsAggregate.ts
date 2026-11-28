@@ -34,7 +34,7 @@ export async function handleAnalyticsAggregate(job: JobRecordDTO): Promise<void>
 
     const purchases = await Purchase.find(purchaseQuery).lean();
 
-    const events = purchases.map((p) => ({
+    const events = purchases.map((p: any) => ({
       eventType: "purchase",
       timestamp: p.createdAt,
       value: Number(p.amount) || 0,
@@ -46,7 +46,7 @@ export async function handleAnalyticsAggregate(job: JobRecordDTO): Promise<void>
 
     const prompts = await Prompt.find({ createdAt: { $gte: startTime, $lte: endTime } }).lean();
 
-    const promptEvents = prompts.map((p) => ({
+    const promptEvents = prompts.map((p: any) => ({
       eventType: "listing_created",
       timestamp: p.createdAt,
       dimensions: {

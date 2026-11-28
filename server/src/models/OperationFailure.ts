@@ -182,14 +182,14 @@ OperationFailureSchema.index({ retryStatus: 1, firstFailedAt: 1 });
 OperationFailureSchema.index({ requiresManualIntervention: 1, resolvedAt: 1 });
 
 // Classify failure age
-OperationFailureSchema.virtual('ageInHours').get(function() {
+OperationFailureSchema.virtual('ageInHours').get(function(this: any) {
   const now = new Date();
   const diff = now.getTime() - this.firstFailedAt.getTime();
   return Math.floor(diff / (1000 * 60 * 60));
 });
 
 // Check if stale (older than 24 hours)
-OperationFailureSchema.virtual('isStale').get(function() {
+OperationFailureSchema.virtual('isStale').get(function(this: any) {
   return this.ageInHours > 24;
 });
 
@@ -265,8 +265,8 @@ OperationFailureSchema.statics.getDashboardSummary = async function() {
     criticalCount,
     manualInterventionCount,
     staleCount,
-    byType: Object.fromEntries(byType.map(t => [t._id, t.count])),
-    bySeverity: Object.fromEntries(bySeverity.map(s => [s._id, s.count])),
+    byType: Object.fromEntries(byType.map((t: any) => [t._id, t.count])),
+    bySeverity: Object.fromEntries(bySeverity.map((s: any) => [s._id, s.count])),
   };
 };
 

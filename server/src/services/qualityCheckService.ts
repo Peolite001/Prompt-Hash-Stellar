@@ -101,12 +101,20 @@ class QualityCheckService {
       };
     }
 
-    const failures = result.checks
+    const failures = (result.checks as Array<{
+      passed: boolean;
+      message?: string;
+      name?: string;
+      severity?: string;
+    }>)
       .filter((c) => !c.passed)
       .map((c) => c.message || `Failed: ${c.name}`);
 
     const isOverridden = result.overriddenAt && !result.blockedAt;
-    const blockingFailures = result.checks.filter((c) => c.severity === "blocking" && !c.passed);
+    const blockingFailures = (result.checks as Array<{
+      passed: boolean;
+      severity?: string;
+    }>).filter((c) => c.severity === "blocking" && !c.passed);
 
     return {
       canPublish: isOverridden || blockingFailures.length === 0,

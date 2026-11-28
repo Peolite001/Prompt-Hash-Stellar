@@ -115,7 +115,7 @@ const INVARIANTS: InvariantCheck[] = [
           ? 'All creators have valid prompts'
           : `${orphanedCreators} creators have no prompts`,
         affectedRecords: orphanedCreators,
-        details: { orphanedWallets: creators.rows.map(r => r.wallet_address) }
+        details: { orphanedWallets: creators.rows.map((r: { wallet_address: string }) => r.wallet_address) }
       };
     },
     repairSteps: [
@@ -294,12 +294,12 @@ export async function verifySnapshotRestore(): Promise<VerificationReport> {
           logger.error(`Repair steps for ${invariant.name}:`, invariant.repairSteps);
         }
       }
-    } catch (error) {
+    } catch (error: unknown) {
       failed++;
       logger.error(`Error running check ${invariant.name}:`, error);
       results.push({
         passed: false,
-        message: `Check failed with error: ${error.message}`,
+        message: `Check failed with error: ${error instanceof Error ? error.message : String(error)}`,
         checkName: invariant.name
       });
     }

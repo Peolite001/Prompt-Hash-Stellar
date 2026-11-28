@@ -20,6 +20,7 @@ import {
 } from "../services/payoutReconciliation";
 import { aggregateSellerAnalytics } from "../utils/sellerAnalytics";
 import type { SellerEvent } from "../utils/sellerAnalytics";
+import { paramString } from "./requestParams";
 
 interface PromptLite {
   _id: unknown;
@@ -81,7 +82,7 @@ export const GetPurchaseTransactions = async (
     }
 
     const query: Record<string, any> = {
-      buyerWallet: walletAddress.toLowerCase(),
+      buyerWallet: paramString(walletAddress).toLowerCase(),
     };
 
     if (cursor) {
@@ -124,7 +125,11 @@ export const GetPurchaseTransactions = async (
     }
 
     // Resolve the related prompts in a single query.
-    const promptIds = [...new Set(purchases.map((p) => String(p.promptId)))];
+    const promptIds = [
+      ...new Set(
+        (purchases as Record<string, unknown>[]).map((p) => String(p.promptId)),
+      ),
+    ];
     const prompts = (await Prompt.find({
       $or: [{ onChainId: { $in: promptIds } }, { _id: { $in: promptIds } }],
     })
@@ -137,7 +142,7 @@ export const GetPurchaseTransactions = async (
       promptByKey.set(String(prompt._id), prompt);
     }
 
-    const transactions = purchases.map((purchase) => {
+    const transactions = (purchases as Record<string, unknown>[]).map((purchase) => {
       const prompt = promptByKey.get(String(purchase.promptId));
       return {
         id: String(purchase._id),
@@ -190,7 +195,7 @@ export const GetCreatorSalesAnalytics = async (
     }
 
     const user = await User.findOne({
-      walletAddress: walletAddress.toLowerCase(),
+      walletAddress: paramString(walletAddress).toLowerCase(),
     }).select("_id");
 
     if (!user) {
@@ -291,7 +296,7 @@ export const GetCreatorSupportMetrics = async (
     }
 
     const user = await User.findOne({
-      walletAddress: walletAddress.toLowerCase(),
+      walletAddress: paramString(walletAddress).toLowerCase(),
     }).select("_id");
 
     if (!user) {
@@ -410,7 +415,7 @@ export const GetCreatorPayoutStatement = async (
     }
 
     const user = await User.findOne({
-      walletAddress: walletAddress.toLowerCase(),
+      walletAddress: paramString(walletAddress).toLowerCase(),
     }).select("_id");
 
     if (!user) {
@@ -433,7 +438,7 @@ export const GetCreatorPayoutStatement = async (
       const empty = { statement: [], summary: emptySummary, status: "settled", balanced: true };
       if (format === "csv" || req.headers.accept?.includes("text/csv")) {
         res.setHeader("Content-Type", "text/csv");
-        res.setHeader("Content-Disposition", payoutStatementDisposition(walletAddress));
+        res.setHeader("Content-Disposition", payoutStatementDisposition(paramString(walletAddress)));
         return res.status(200).send(payoutCsvHeader);
       }
       return res.json(empty);
@@ -485,7 +490,7 @@ export const GetCreatorPayoutStatement = async (
       const csvRows = reconciled.statement.map((row) => rowToCsv(row)).join("\n");
 
       res.setHeader("Content-Type", "text/csv");
-      res.setHeader("Content-Disposition", payoutStatementDisposition(walletAddress));
+      res.setHeader("Content-Disposition", payoutStatementDisposition(paramString(walletAddress)));
       return res.status(200).send(`${payoutCsvHeader}${csvRows}`);
     }
 

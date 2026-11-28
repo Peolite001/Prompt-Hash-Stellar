@@ -394,7 +394,7 @@ provenanceRecordSchema.statics.getImportStats = async function (params: {
 /**
  * Pre-save hook: Validate parent-child consistency.
  */
-provenanceRecordSchema.pre("save", async function () {
+provenanceRecordSchema.pre("save", async function (this: any) {
   // Ensure sourcePromptId is set if parentProvenanceId is set
   if (this.parentProvenanceId && !this.sourcePromptId) {
     const parent = await ProvenanceRecord.findById(this.parentProvenanceId);
@@ -405,8 +405,20 @@ provenanceRecordSchema.pre("save", async function () {
   
 });
 
-const ProvenanceRecord =
-  mongoose.models.ProvenanceRecord ||
-  mongoose.model("ProvenanceRecord", provenanceRecordSchema);
+/** Statics registered above, made visible to callers through the model type. */
+export interface ProvenanceRecordStatics {
+  findByBatch(batchId: string): Promise<unknown[]>;
+  findByActor(actorId: string, limit?: number): Promise<unknown[]>;
+  getImportStats(params: {
+    startDate?: Date;
+    endDate?: Date;
+    sourceType?: ImportSourceType;
+    actorId?: string;
+  }): Promise<unknown[]>;
+}
+
+const ProvenanceRecord = (mongoose.models.ProvenanceRecord ||
+  mongoose.model("ProvenanceRecord", provenanceRecordSchema)) as mongoose.Model<any> &
+  ProvenanceRecordStatics;
 
 export default ProvenanceRecord;

@@ -131,7 +131,7 @@ retentionHoldRouter.post(
       const body = req.body ?? {};
       const repairIncompleteScrubs = body.repairIncompleteScrubs === true;
       if (repairIncompleteScrubs) {
-        const scopes = req.admin?.scopes ?? [];
+        const scopes = req.admin?.scope ?? [];
         if (!scopes.includes("retention-holds:write") && !scopes.includes("*")) {
           res.status(403).json({
             error: "repairIncompleteScrubs requires retention-holds:write scope.",

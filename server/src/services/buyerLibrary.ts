@@ -8,7 +8,7 @@ import {
   deriveEntitlementHealth,
   isEntitled,
   type EntitlementHealth,
-} from "../../../src/lib/prompts/entitlementHealth";
+} from "../lib/prompts/entitlementHealth.js";
 
 /**
  * Buyer library (#784): collections, archive state, search, and entitlement
@@ -266,7 +266,7 @@ export async function createCollection(
     if ((err as { code?: number }).code === 11000) {
       throw new LibraryError(409, "You already have a collection with this name.");
     }
-    if (err instanceof mongoose.Error.ValidationError) {
+    if (err instanceof Error && err.name === "ValidationError") {
       throw new LibraryError(400, err.message);
     }
     throw err;
@@ -298,7 +298,7 @@ export async function updateCollection(
     if ((err as { code?: number }).code === 11000) {
       throw new LibraryError(409, "You already have a collection with this name.");
     }
-    if (err instanceof mongoose.Error.ValidationError) {
+    if (err instanceof Error && err.name === "ValidationError") {
       throw new LibraryError(400, err.message);
     }
     throw err;

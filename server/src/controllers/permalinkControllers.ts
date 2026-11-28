@@ -9,6 +9,7 @@ import {
   deleteRecord,
 } from "../services/permalinkService.js";
 import { logger } from "../services/structuredLogger.js";
+import { paramString } from "./requestParams";
 
 /**
  * Controller to resolve permalinks, slugs, and record identifiers.
@@ -22,14 +23,14 @@ export const ResolvePromptPermalink = async (
   try {
     await connectDb();
 
-    const identifier = req.params.identifier || (req.query.identifier as string);
+    const identifier = paramString(req.params.identifier || req.query.identifier);
     if (!identifier) {
       return res.status(400).json({ error: "Record identifier or slug is required." });
     }
 
     const viewerWallet =
-      (req.query.viewerWallet as string) ||
-      (req.headers["x-wallet-address"] as string) ||
+      paramString(req.query.viewerWallet) ||
+      paramString(req.headers["x-wallet-address"]) ||
       undefined;
 
     const isAdmin = Boolean((req as any).admin);
@@ -90,7 +91,7 @@ export const RenamePromptRecord = async (
     }
 
     const updated = await renameRecord({
-      promptId,
+      promptId: paramString(promptId),
       newTitle: newTitle.trim(),
       reason,
       actor: {
@@ -128,7 +129,7 @@ export const ArchivePromptRecord = async (
     const { reason, walletAddress } = req.body;
 
     const updated = await archiveRecord({
-      promptId,
+      promptId: paramString(promptId),
       reason,
       actor: {
         role: (req as any).admin ? "admin" : "creator",
@@ -165,7 +166,7 @@ export const RestorePromptRecord = async (
     const { reason, walletAddress } = req.body;
 
     const updated = await restoreRecord({
-      promptId,
+      promptId: paramString(promptId),
       reason,
       actor: {
         role: (req as any).admin ? "admin" : "creator",
@@ -201,7 +202,7 @@ export const RestrictPromptRecord = async (
     const { reason, notes, moderatorWallet } = req.body;
 
     const updated = await restrictRecord({
-      promptId,
+      promptId: paramString(promptId),
       reasonCode: reason,
       notes,
       actor: {

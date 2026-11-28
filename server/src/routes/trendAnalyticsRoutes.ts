@@ -136,7 +136,7 @@ trendAnalyticsRouter.get(
         startTime: startTime ? String(startTime) : null,
         endTime: endTime ? String(endTime) : null,
         redacted: true,
-        metrics: metrics.map((m) => ({
+        metrics: metrics.map((m: any) => ({
           eventType: m.eventType,
           timeWindow: m.timeWindow,
           granularity: m.granularity,
@@ -152,7 +152,7 @@ trendAnalyticsRouter.get(
         const header =
           "eventType,timeWindow,granularity,dimensions,metricName,metricType,value,count";
         const rows = report.metrics.map(
-          (m) =>
+          (m: any) =>
             `${m.eventType},${m.timeWindow},${m.granularity},"${JSON.stringify(m.dimensions)}",${m.metricName},${m.metricType},${m.value},${m.count}`
         );
         res.setHeader("Content-Type", "text/csv");

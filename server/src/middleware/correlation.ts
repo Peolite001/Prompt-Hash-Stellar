@@ -80,7 +80,7 @@ const SENSITIVE_VALUE_PATTERNS: RegExp[] = [
   /\bsk[A-Za-z0-9]{16,}/,
   /\bsk_[A-Za-z0-9]{16,}/,
   /\bghp_[A-Za-z0-9]{16,}/,
-  /\xox[0-9a-f]{16,}/i,
+  /\bxox[0-9a-f]{16,}/i,
   /\beyJ[a-zA-Z0-9]+\.[A-Za-z0-9]+\.[a-zA-Z0-9_-]+/,
   /-----BEGIN [A-Z ]+-----[\s\S]+?-----END [A-Z ]+-----/,
   /\b[A-Za-z0-9_\-]{20}\.[A-Za-z0-9_\-]{20}\.[a-zA-Z0-9_\-]{20}/,

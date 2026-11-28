@@ -135,7 +135,7 @@ exportRouter.post(
 
       res.status(202).json({
         success: true,
-        exportId: exportRecord._id,
+        exportId: (exportRecord as unknown as { _id?: unknown })._id,
         scope: exportRecord.scope,
         status: exportRecord.status,
         metadata: exportRecord.metadata,

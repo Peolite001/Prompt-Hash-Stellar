@@ -94,7 +94,7 @@ async function archiveEligible(
           $and: [
             eligibleFilter,
             {
-              _id: { $in: documents.map((document) => document._id) },
+              _id: { $in: documents.map((document: any) => document._id) },
               retentionHold: { $ne: true },
               archivedAt: null,
             },

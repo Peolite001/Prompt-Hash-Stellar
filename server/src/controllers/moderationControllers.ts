@@ -41,6 +41,7 @@ import { Request, Response } from "express";
 import { createHash } from "crypto";
 import connectDb from "../db/connectDb";
 import Prompt from "../models/Prompt";
+import User from "../models/User";
 import ModerationDecision, {
   ModerationAction,
   ModerationStatus,
@@ -109,7 +110,6 @@ export const GetModerationQueue = async (
 
     if (creatorWallet) {
       // Owner is a User ObjectId reference; look up the user first.
-      const User = (await import("../models/User")).default;
       const user = await User.findOne({
         walletAddress: creatorWallet.toLowerCase(),
       }).lean();
@@ -212,7 +212,9 @@ export const BulkModerationAction = async (
       .populate("owner", "walletAddress")
       .lean();
 
-    const eligibleIds = new Set(candidates.map((p) => String(p._id)));
+    const eligibleIds = new Set(
+      (candidates as Record<string, unknown>[]).map((p) => String(p._id)),
+    );
     const skipped = promptIds.length - eligibleIds.size;
 
     const decisionIds: string[] = [];
@@ -220,7 +222,7 @@ export const BulkModerationAction = async (
     // Apply action to each eligible prompt individually so we can record a
     // per-prompt ModerationDecision and fan-out notifications.
     await Promise.all(
-      candidates.map(async (prompt) => {
+      (candidates as Record<string, unknown>[]).map(async (prompt) => {
         const previousStatus = prompt.moderationStatus as ModerationStatus;
         const promptIdStr = String(prompt._id);
 

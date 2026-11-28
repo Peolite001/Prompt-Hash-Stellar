@@ -26,6 +26,7 @@ import {
   listFailedEvents,
 } from "../services/inboundWebhookProcessor";
 import { logger } from "../services/structuredLogger";
+import { paramString } from "./requestParams";
 
 /** Safe headers to retain — never include Authorization, Cookie, or secrets. */
 const SAFE_HEADER_KEYS = [
@@ -249,7 +250,7 @@ export const RetryFailedInboundEvent = async (
 ): Promise<Response> => {
   try {
     await connectDb();
-    const reset = await retryFailedEvent(req.params.id);
+    const reset = await retryFailedEvent(paramString(req.params.id));
     if (!reset) {
       logger.warn("Inbound webhook retry target not found", {
         action: "inboundWebhookRetry",

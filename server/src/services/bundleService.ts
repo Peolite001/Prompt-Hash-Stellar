@@ -108,7 +108,7 @@ export async function purchaseBundle(input: PurchaseBundleInput): Promise<IBundl
   }
 
   const pricePaid = input.pricePaid !== undefined ? input.pricePaid : bundle.bundlePrice;
-  const snapshotAtPurchase = bundle.snapshots.map((s) => ({
+  const snapshotAtPurchase = bundle.snapshots.map((s: IPromptSnapshot) => ({
     promptId: s.promptId,
     title: s.title,
     price: s.price,

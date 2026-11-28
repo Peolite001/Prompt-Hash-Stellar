@@ -13,7 +13,7 @@ export async function handleStaleDisputeCleanup(job: JobRecordDTO): Promise<void
   if (!olderThanDays || olderThanDays < 1) throw new Error("stale_dispute_cleanup: olderThanDays must be >=1");
 
   try {
-    const Purchase = (await import("../../models/Purchase")).default;
+    const Purchase = (await import("../../models/Purchase.js") as any).default;
     const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
     const stale = await Purchase.find({ status: "disputed", updatedAt: { $lt: cutoff } })
       .limit(100)

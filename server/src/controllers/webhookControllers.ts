@@ -4,6 +4,7 @@ import connectDb from "../db/connectDb";
 import WebhookSubscription from "../models/WebhookSubscription";
 import { listDeadLetters, replayDeadLetter, rotateSigningKey } from "../services/webhookOutbox";
 import { enforceUrlAllowList } from "../services/allowListPolicy";
+import { paramString } from "./requestParams";
 
 export const RegisterWebhook = async (req: Request, res: Response): Promise<Response> => {
   try {
@@ -118,7 +119,7 @@ export const ListWebhookDeadLetters = async (req: Request, res: Response): Promi
 export const ReplayWebhookDeadLetter = async (req: Request, res: Response): Promise<Response> => {
   try {
     await connectDb();
-    const replayed = await replayDeadLetter(req.params.id);
+    const replayed = await replayDeadLetter(paramString(req.params.id));
     if (!replayed) {
       return res.status(404).json({ error: "No dead-lettered event found with that id." });
     }
@@ -135,7 +136,7 @@ export const ReplayWebhookDeadLetter = async (req: Request, res: Response): Prom
 export const RotateWebhookSecret = async (req: Request, res: Response): Promise<Response> => {
   try {
     await connectDb();
-    const newSecret = await rotateSigningKey(req.params.id);
+    const newSecret = await rotateSigningKey(paramString(req.params.id));
     if (!newSecret) {
       return res.status(404).json({ error: "No webhook subscription found with that id." });
     }

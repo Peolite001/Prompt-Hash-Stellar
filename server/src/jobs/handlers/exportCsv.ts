@@ -17,7 +17,7 @@ export async function handleExportCsv(job: JobRecordDTO): Promise<void> {
   // Real implementation: query PayoutStatement / Purchase, write CSV to S3 or temp file,
   // store artifact id. We simulate with a light DB touch.
   try {
-    const PayoutStatement = (await import("../../models/PayoutStatement")).default;
+    const PayoutStatement = (await import("../../models/PayoutStatement.js") as any).default;
     await PayoutStatement.findOne({ creatorWallet: String(creatorWallet).toLowerCase() }).lean().catch(() => null);
   } catch (err: any) {
     if (err.name === "MongooseError" || err.message?.includes("not connected")) {
